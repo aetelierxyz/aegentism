@@ -45,7 +45,7 @@ impl Cell {
     }
 
     pub fn sell_level(&self) -> u32 {
-        self.index + 1
+        self.index.saturating_add(1)
     }
 
     pub fn resting(&self, instance: &Instance) -> Order {

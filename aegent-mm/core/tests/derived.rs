@@ -1,6 +1,5 @@
 use aegent_mm_core::backstop::{backstops, budget};
 use aegent_mm_core::estimates::{Ladder, binance_quantity, binance_quantity_in_lots};
-use aegent_mm_core::numeric::ceil_quotient;
 use aegent_mm_core::params::{Instance, Resources, Theta};
 use aegent_mm_core::program::Program;
 use aegent_mm_core::quote::quote;
@@ -48,7 +47,7 @@ fn cases() -> impl Strategy<Value = Case> {
                     lot_step: lot,
                     ..reference::app_binding()
                 };
-                let least_lots = ceil_quotient(binding.min_notional, lower * lot);
+                let least_lots = (binding.min_notional / (lower * lot)).ceil();
                 let quantity = lot * (least_lots + Decimal::from(extra_lots));
                 let margin = Decimal::new(margin_cents, 2);
                 let instance = Instance::admit(

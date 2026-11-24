@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use aegent_mm_core::cells::{Cell, Cells, first_side, owner};
-use aegent_mm_core::numeric::ceil_quotient;
 use aegent_mm_core::params::{Instance, Resources, Theta};
 use aegent_mm_core::quote::{Order, quote, resting_notional};
 use aegent_mm_core::state::State;
@@ -64,7 +63,7 @@ fn setups(max_grids: u32) -> impl Strategy<Value = Setup> {
                     lot_step: lot,
                     ..reference::app_binding()
                 };
-                let least_lots = ceil_quotient(binding.min_notional, lower * lot);
+                let least_lots = (binding.min_notional / (lower * lot)).ceil();
                 let quantity = lot * (least_lots + Decimal::from(extra_lots));
                 let wallet = dec!(1000000);
                 let instance = Instance::admit(

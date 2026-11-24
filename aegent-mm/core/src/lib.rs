@@ -4,7 +4,6 @@ pub mod cells;
 pub mod estimates;
 pub mod event;
 pub mod ledger;
-pub mod numeric;
 pub mod params;
 pub mod program;
 pub mod quote;
@@ -15,6 +14,8 @@ pub mod state;
 pub mod step;
 pub mod stop;
 pub mod value;
+
+mod numeric;
 
 pub use backstop::{BackstopOrder, Backstops};
 pub use binding::{Binding, BindingError};
