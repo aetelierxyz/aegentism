@@ -10,7 +10,7 @@ use aegent_mm_core::quote::{quote, resting_notional};
 use aegent_mm_core::reference;
 use aegent_mm_core::start::{Precondition, nearest_level, start, start_risk_ratio};
 use aegent_mm_core::state::State;
-use aegent_mm_core::stop::{risk_holds, risk_ratio};
+use aegent_mm_core::stop::{risk_ratio, risk_ratio_below_one};
 use aegent_mm_core::value::profit_at;
 use aegent_mm_core::{Prices, Side};
 use common::{admitted, app_instance, fill, program, running, wallet_balance};
@@ -191,12 +191,12 @@ fn risk_ratio_falls_below_one_after_eighteen_levels() {
         for levels in 0..=17 {
             let state = one_way(&instance, levels, down);
             let mark = instance.level_price(state.empty_level());
-            assert!(!risk_holds(&instance, &state, mark));
+            assert!(!risk_ratio_below_one(&instance, &state, mark));
             assert!(ratio_after(&instance, levels, down) >= Decimal::ONE);
         }
         let state = one_way(&instance, 18, down);
         let mark = instance.level_price(state.empty_level());
-        assert!(risk_holds(&instance, &state, mark));
+        assert!(risk_ratio_below_one(&instance, &state, mark));
         assert!(ratio_after(&instance, 18, down) < Decimal::ONE);
         assert_eq!(profit_at(&instance, &state, mark).round_dp(2), dec!(-11.78));
     }

@@ -130,6 +130,7 @@ fn a_wallet_value_equal_to_the_floor_does_not_trip_the_guard() {
         wallet: Wallet::Reported {
             balance,
             entry_price: Decimal::ZERO,
+            position: Decimal::ZERO,
         },
         stream_lost_since_ms: None,
     };
@@ -653,6 +654,10 @@ fn the_first_condition_in_the_table_gives_the_reason() {
     );
     assert_eq!(
         evaluate(&input(dec!(79.99), Some(Signal::Backstop), stale)),
+        exit(Reason::Guard, PositionAtEnd::ClosedByExchange)
+    );
+    assert_eq!(
+        evaluate(&input(dec!(79.99), Some(Signal::Reject), stale)),
         exit(Reason::Guard, PositionAtEnd::Closed)
     );
 }
@@ -706,6 +711,7 @@ fn the_guard_takes_the_reason_from_a_reject_that_arrives_at_the_same_time() {
         wallet: Wallet::Reported {
             balance: dec!(79),
             entry_price: Decimal::ZERO,
+            position: Decimal::ZERO,
         },
         stream_lost_since_ms: None,
     };
@@ -878,6 +884,7 @@ fn a_condition_met_during_closing_does_not_change_the_exit() {
         wallet: Wallet::Reported {
             balance: dec!(10),
             entry_price: dec!(69.30),
+            position: dec!(0.11),
         },
         stream_lost_since_ms: Some(0),
     };
@@ -935,4 +942,227 @@ fn a_backstop_trade_leaves_no_entry_in_the_ledger() {
     assert_eq!(run.confirm_closed(), Ok(()));
     assert_eq!(run.state().ledger().trades().count(), 2);
     assert_eq!(run.position(), dec!(0.22));
+}
+
+#[test]
+fn the_reported_wallet_is_valued_with_the_balance_entry_price_and_position_of_the_account() {
+    let mut run = begin(roomy(plain_theta()));
+    walk(&mut run, &down(2));
+    assert_eq!(run.position(), dec!(0.22));
+    let prices = Prices {
+        last: dec!(68.01),
+        mark: dec!(68.03),
+        bid: dec!(68.00),
+        ask: dec!(68.02),
+    };
+    run.apply(&Event::at(100, EventKind::Price(prices)), &run_only())
+        .expect("accepted");
+    let reported = |balance: Decimal, entry_price: Decimal, position: Decimal| Wallet::Reported {
+        balance,
+        entry_price,
+        position,
+    };
+    assert_eq!(
+        run.wallet_value(&reported(dec!(100), dec!(68.95), dec!(0.22))),
+        dec!(99.785016)
+    );
+    assert_eq!(
+        run.wallet_value(&reported(dec!(100), dec!(68.95), dec!(0.22))),
+        run.wallet_value(&run_only().wallet)
+    );
+    assert_eq!(
+        run.wallet_value(&reported(dec!(100), dec!(69.95), dec!(0.22))),
+        dec!(99.565016)
+    );
+    assert_eq!(
+        run.wallet_value(&reported(dec!(81), dec!(68.95), Decimal::ZERO)),
+        dec!(81)
+    );
+    assert_eq!(
+        run.wallet_value(&reported(dec!(100), dec!(70.70), dec!(-0.22))),
+        dec!(100.58361424)
+    );
+}
+
+#[test]
+fn the_guard_reads_the_position_of_the_account_and_not_that_of_the_run() {
+    let mut run = begin(roomy(plain_theta()));
+    walk(&mut run, &up(20));
+    assert_eq!(run.position(), dec!(-2.2));
+    let flat_account = Observation {
+        wallet: Wallet::Reported {
+            balance: dec!(81),
+            entry_price: Decimal::ZERO,
+            position: Decimal::ZERO,
+        },
+        stream_lost_since_ms: None,
+    };
+    assert_eq!(run.wallet_value(&flat_account.wallet), dec!(81));
+    let tick = run
+        .apply(&Event::at(1_000, EventKind::Tick), &flat_account)
+        .expect("accepted");
+    assert_eq!(tick.exit, None);
+}
+
+#[test]
+fn a_backstop_trade_that_meets_the_guard_gives_the_reason_guard_and_no_market_order() {
+    let mut run = begin(roomy(plain_theta()));
+    walk(&mut run, &down(20));
+    assert_eq!(at_price(&mut run, 1_000, dec!(53.60)).exit, None);
+    let after_the_stop = Observation {
+        wallet: Wallet::Reported {
+            balance: dec!(79.95),
+            entry_price: Decimal::ZERO,
+            position: Decimal::ZERO,
+        },
+        stream_lost_since_ms: None,
+    };
+    let applied = run
+        .apply(&Event::at(1_001, EventKind::Backstop), &after_the_stop)
+        .expect("accepted");
+    assert_eq!(
+        applied.exit,
+        exit(Reason::Guard, PositionAtEnd::ClosedByExchange)
+    );
+    assert_eq!(
+        run.closing_actions(),
+        vec![
+            ClosingAction::CancelEveryRestingOrder,
+            ClosingAction::VerifyNoRestingOrders,
+            ClosingAction::VerifyNoPosition,
+        ]
+    );
+}
+
+#[test]
+fn a_backstop_trade_marks_the_position_as_closed_by_the_exchange_whatever_reason_comes_first() {
+    let theta = Theta {
+        stop_loss: Some(Target::Amount(dec!(-11))),
+        stop_bottom: Some(dec!(57.50)),
+        close_risk: false,
+        close_tp_sl: false,
+        ..plain_theta()
+    };
+    let instance = tight(theta);
+    let program = program();
+    let mut state = running(&instance, START_LEVEL);
+    for moved in 1..=17 {
+        fill(&instance, &mut state, u64::from(moved), START_LEVEL - moved);
+    }
+    let prices = Prices::flat(dec!(57.40));
+    let input = |signal: Option<Signal>| StopInput {
+        instance: &instance,
+        program: &program,
+        state: &state,
+        prices: &prices,
+        wallet_value: dec!(90),
+        signal,
+        liveness: Liveness {
+            now_ms: 100,
+            last_price_ms: 100,
+            stream_lost_since_ms: None,
+        },
+    };
+    assert_eq!(
+        evaluate(&input(None)),
+        exit(Reason::Risk, PositionAtEnd::Kept)
+    );
+    assert_eq!(
+        evaluate(&input(Some(Signal::Backstop))),
+        exit(Reason::Backstop, PositionAtEnd::ClosedByExchange)
+    );
+    let below_floor = StopInput {
+        wallet_value: dec!(79),
+        ..input(Some(Signal::Backstop))
+    };
+    assert_eq!(
+        evaluate(&below_floor),
+        exit(Reason::Guard, PositionAtEnd::ClosedByExchange)
+    );
+}
+
+#[test]
+fn the_take_profit_comes_before_a_stop_command() {
+    let instance = tight(reference::theta());
+    let program = program();
+    let mut state = running(&instance, START_LEVEL);
+    fill(&instance, &mut state, 1, 19);
+    fill(&instance, &mut state, 2, 18);
+    let prices = Prices::flat(dec!(71.00));
+    let input = StopInput {
+        instance: &instance,
+        program: &program,
+        state: &state,
+        prices: &prices,
+        wallet_value: dec!(100),
+        signal: Some(Signal::Command { keep: true }),
+        liveness: Liveness {
+            now_ms: 3,
+            last_price_ms: 3,
+            stream_lost_since_ms: None,
+        },
+    };
+    assert_eq!(conditions(&input), [Reason::TakeProfit, Reason::Command]);
+    assert_eq!(
+        evaluate(&input),
+        exit(Reason::TakeProfit, PositionAtEnd::Closed)
+    );
+}
+
+#[test]
+fn stop_is_evaluated_after_a_partial_trade() {
+    let theta = Theta {
+        stop_loss: Some(Target::Amount(dec!(-0.05))),
+        ..plain_theta()
+    };
+    let mut run = begin(roomy(theta));
+    assert_eq!(at_price(&mut run, 1, dec!(69.30)).exit, None);
+    let costly_part = Event::at(
+        2,
+        EventKind::Trade {
+            level: 19,
+            quantity: dec!(0.04),
+            price: dec!(69.30),
+            fee: dec!(0.06),
+            maker: false,
+        },
+    );
+    let applied = run.apply(&costly_part, &run_only()).expect("admissible");
+    assert_eq!(applied.fill, None);
+    assert_eq!(applied.send, None);
+    assert_eq!(applied.exit, exit(Reason::StopLoss, PositionAtEnd::Closed));
+    assert_eq!(
+        run.closing_actions()[1],
+        ClosingAction::ReduceOnlyMarketOrder {
+            side: Side::Sell,
+            quantity: dec!(0.04),
+        }
+    );
+}
+
+#[test]
+fn stop_is_evaluated_after_a_funding_payment() {
+    let theta = Theta {
+        stop_loss: Some(Target::Amount(dec!(-0.05))),
+        ..plain_theta()
+    };
+    let mut run = begin(roomy(theta));
+    let small = Event::at(
+        1,
+        EventKind::Funding {
+            amount: dec!(-0.04),
+        },
+    );
+    let large = Event::at(
+        2,
+        EventKind::Funding {
+            amount: dec!(-0.01),
+        },
+    );
+    assert_eq!(run.apply(&small, &run_only()).map(|a| a.exit), Ok(None));
+    assert_eq!(
+        run.apply(&large, &run_only()).map(|a| a.exit),
+        Ok(exit(Reason::StopLoss, PositionAtEnd::Closed))
+    );
+    assert_eq!(run.state().ledger().funding(), dec!(-0.05));
 }

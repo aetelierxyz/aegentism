@@ -7,7 +7,7 @@ use aegent_mm_core::reference;
 use aegent_mm_core::run::Run;
 use aegent_mm_core::start::{Precondition, Start, nearest_level, start, start_risk_ratio};
 use aegent_mm_core::state::{Phase, PhaseError, State};
-use aegent_mm_core::stop::risk_holds;
+use aegent_mm_core::stop::risk_ratio_below_one;
 use aegent_mm_core::{Prices, Side};
 use common::{admitted, app_instance, program, wallet_balance};
 use rust_decimal::Decimal;
@@ -140,7 +140,10 @@ fn the_start_risk_condition_equals_the_larger_side_over_leverage_within_the_marg
             let bids = instance.quantity() * instance.sum_of_prices_below(start_level);
             let asks = instance.quantity() * instance.sum_of_prices_above(start_level);
             let within = bids.max(asks) / Decimal::from(leverage) <= margin;
-            assert_eq!(!risk_holds(&instance, &state, dec!(70.21)), within);
+            assert_eq!(
+                !risk_ratio_below_one(&instance, &state, dec!(70.21)),
+                within
+            );
         }
     }
 }
@@ -438,4 +441,30 @@ fn a_refused_start_builds_no_run() {
         wallet_balance(),
     );
     assert_eq!(refused, Err(vec![Precondition::EmptyLevelAtBound]));
+}
+
+#[test]
+fn the_start_price_is_the_last_price_and_not_the_mark_price() {
+    let instance = app_instance();
+    let prices = Prices {
+        last: dec!(70.21),
+        mark: dec!(71.20),
+        bid: dec!(70.20),
+        ask: dec!(70.22),
+    };
+    let started = start_at(&instance, prices).expect("preconditions hold");
+    assert_eq!(nearest_level(&instance, dec!(71.20)), 22);
+    assert_eq!(started.start_price, dec!(70.21));
+    assert_eq!(started.state.start_level(), 20);
+}
+
+#[test]
+fn sums_of_level_prices_are_empty_beyond_the_ladder() {
+    let instance = app_instance();
+    assert_eq!(instance.sum_of_prices_above(40), Decimal::ZERO);
+    assert_eq!(instance.sum_of_prices_above(41), Decimal::ZERO);
+    assert_eq!(instance.sum_of_prices_above(u32::MAX), Decimal::ZERO);
+    assert_eq!(instance.sum_of_prices_below(0), Decimal::ZERO);
+    assert_eq!(instance.sum_of_prices_below(41), dec!(2870));
+    assert_eq!(instance.sum_of_prices_below(u32::MAX), dec!(2870));
 }

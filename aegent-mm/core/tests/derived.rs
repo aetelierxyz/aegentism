@@ -1,11 +1,11 @@
 use aegent_mm_core::backstop::{backstops, budget};
 use aegent_mm_core::estimates::{Ladder, binance_quantity, binance_quantity_in_lots};
+use aegent_mm_core::numeric::ceil_quotient;
 use aegent_mm_core::params::{Instance, Resources, Theta};
 use aegent_mm_core::program::Program;
 use aegent_mm_core::quote::quote;
 use aegent_mm_core::start::{Precondition, nearest_level, start};
 use aegent_mm_core::state::State;
-use aegent_mm_core::steps::ceil_quotient;
 use aegent_mm_core::{Binding, Prices, Side, reference};
 use proptest::prelude::*;
 use rust_decimal::Decimal;

@@ -1,14 +1,14 @@
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 
-use crate::backstop::{Backstops, backstops, budget};
+use crate::backstop::{Backstops, backstops, budget, high_slack, low_slack};
 use crate::event::Prices;
+use crate::numeric::floor_quotient;
 use crate::params::Instance;
 use crate::program::Program;
 use crate::quote::{Order, quote};
 use crate::state::State;
-use crate::steps::floor_quotient;
-use crate::stop::{risk_holds, risk_ratio};
+use crate::stop::{risk_ratio, risk_ratio_below_one};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Precondition {
@@ -62,26 +62,21 @@ pub fn start(
     let start_level = nearest_level(instance, start_price);
     let mut found = Vec::new();
     let state = State::initial(instance, start_level);
-    let stops = backstops(instance, start_level, budget(program, wallet_value));
+    let room = budget(program, wallet_value);
+    let stops = backstops(instance, start_level, room);
     if state.is_none() {
         found.push(Precondition::EmptyLevelAtBound);
     }
     if state
         .as_ref()
-        .is_some_and(|state| risk_holds(instance, state, prices.mark))
+        .is_some_and(|state| risk_ratio_below_one(instance, state, prices.mark))
     {
         found.push(Precondition::RiskRatioBelowOne);
     }
-    if stops
-        .as_ref()
-        .is_some_and(|stops| stops.low_distance <= Decimal::ZERO)
-    {
+    if stops.is_some() && low_slack(instance, start_level, room) <= Decimal::ZERO {
         found.push(Precondition::LowBackstopDistanceNotPositive);
     }
-    if stops
-        .as_ref()
-        .is_some_and(|stops| stops.high_distance <= Decimal::ZERO)
-    {
+    if stops.is_some() && high_slack(instance, start_level, room) <= Decimal::ZERO {
         found.push(Precondition::HighBackstopDistanceNotPositive);
     }
     let trigger = prices.trigger(theta.trigger);

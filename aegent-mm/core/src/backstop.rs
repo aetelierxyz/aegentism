@@ -1,9 +1,9 @@
 use rust_decimal::Decimal;
 
 use crate::ledger::Side;
+use crate::numeric::{ceil_quotient, floor_quotient};
 use crate::params::Instance;
 use crate::program::Program;
-use crate::steps::{ceil_quotient, floor_quotient};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BackstopOrder {

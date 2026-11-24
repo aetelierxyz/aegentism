@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
 
+use crate::numeric::floor_quotient;
 use crate::params::{Instance, Resources};
-use crate::steps::floor_quotient;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ladder {

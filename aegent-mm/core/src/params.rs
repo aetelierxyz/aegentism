@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
 
 use crate::binding::{Binding, BindingError};
-use crate::steps::{divides, triangular};
+use crate::numeric::{divides, triangular};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Trigger {
@@ -247,11 +247,15 @@ impl Instance {
     }
 
     pub fn sum_of_prices_below(&self, level: u32) -> Decimal {
-        Decimal::from(level) * self.theta.lower + self.spacing * triangular(level)
+        let count = level.min(self.theta.grids + 1);
+        Decimal::from(count) * self.theta.lower + self.spacing * triangular(count)
     }
 
     pub fn sum_of_prices_above(&self, level: u32) -> Decimal {
-        let count = self.theta.grids.saturating_sub(level);
+        if level >= self.theta.grids {
+            return Decimal::ZERO;
+        }
+        let count = self.theta.grids - level;
         let indices = triangular(self.theta.grids + 1) - triangular(level + 1);
         Decimal::from(count) * self.theta.lower + self.spacing * indices
     }

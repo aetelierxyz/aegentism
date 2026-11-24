@@ -313,7 +313,7 @@ fn a_price_below_the_range_without_a_met_condition_is_not_an_exit() {
 }
 
 #[test]
-fn the_extremes_of_a_bar_with_fills_are_not_valued_with_the_position_after_them() {
+fn in_a_bar_with_fills_each_extreme_is_valued_in_the_state_that_reached_it() {
     let fills = [
         fill(5_000, 19, Side::Buy),
         fill(10_000, 18, Side::Buy),
@@ -328,6 +328,81 @@ fn the_extremes_of_a_bar_with_fills_are_not_valued_with_the_position_after_them(
     assert_eq!(outcome.ended, None);
     assert_eq!(outcome.fills_applied, 3);
     assert_eq!(outcome.profit_last(), dec!(-0.2475));
+    let loss_at_the_low = Theta {
+        stop_loss: Some(Target::Amount(dec!(-0.26))),
+        ..plain()
+    };
+    let stopped = account(&replay(tight(loss_at_the_low)), &fills, &bars).expect("a valid replay");
+    assert_eq!(
+        stopped.ended,
+        ended(Reason::StopLoss, PositionAtEnd::Closed, T0 + BAR_MS)
+    );
+    assert_eq!(stopped.fills_applied, 3);
+    assert_eq!(stopped.run.prices().last, dec!(67.80));
+    assert_eq!(stopped.profit_last(), dec!(-0.264));
+    let top_at_the_high = Theta {
+        stop_top: Some(dec!(70.60)),
+        ..plain()
+    };
+    let topped = account(&replay(tight(top_at_the_high)), &fills, &bars).expect("a valid replay");
+    assert_eq!(
+        topped.ended,
+        ended(Reason::Price, PositionAtEnd::Closed, T0 + 5_000)
+    );
+    assert_eq!(topped.fills_applied, 0);
+    assert_eq!(topped.fills_discarded, 3);
+    assert_eq!(topped.run.position(), Decimal::ZERO);
+}
+
+#[test]
+fn the_low_of_a_bar_that_also_holds_the_fills_down_to_it_trips_the_guard() {
+    let fills = buys_down_to(0);
+    let bars = [bar(0, dec!(70.21), dec!(70.21), dec!(53.00), dec!(55.50))];
+    let outcome = account(&replay(roomy(plain())), &fills, &bars).expect("a valid replay");
+    assert_eq!(
+        outcome.ended,
+        ended(Reason::Guard, PositionAtEnd::Closed, T0 + BAR_MS)
+    );
+    assert_eq!(outcome.fills_applied, 20);
+    assert_eq!(outcome.run.position(), dec!(2.2));
+    assert_eq!(outcome.run.prices().last, dec!(53.00));
+    assert_eq!(outcome.wallet_value(), dec!(78.72336));
+}
+
+#[test]
+fn the_low_of_a_bar_that_also_holds_the_fills_down_to_it_breaks_the_risk_ratio() {
+    let fills = buys_down_to(3);
+    let bars = [bar(0, dec!(70.21), dec!(70.21), dec!(57.50), dec!(58.00))];
+    let outcome = account(&replay(tight(plain())), &fills, &bars).expect("a valid replay");
+    assert_eq!(
+        outcome.ended,
+        ended(Reason::Risk, PositionAtEnd::Closed, T0 + BAR_MS)
+    );
+    assert_eq!(outcome.fills_applied, 17);
+    assert_eq!(outcome.run.position(), dec!(1.87));
+}
+
+#[test]
+fn a_price_stop_is_met_by_the_low_of_a_bar_with_fills() {
+    let theta = Theta {
+        stop_bottom: Some(dec!(69.50)),
+        ..plain()
+    };
+    let fills = [fill(10_000, 21, Side::Sell), fill(30_000, 20, Side::Buy)];
+    let with_fills = [bar(0, dec!(70.21), dec!(70.75), dec!(69.40), dec!(69.80))];
+    let outcome =
+        account(&replay(roomy(theta.clone())), &fills, &with_fills).expect("a valid replay");
+    assert_eq!(
+        outcome.ended,
+        ended(Reason::Price, PositionAtEnd::Closed, T0 + 10_000)
+    );
+    assert_eq!(outcome.fills_applied, 0);
+    assert_eq!(outcome.fills_discarded, 2);
+    let quiet = account(&replay(roomy(theta)), &[], &with_fills).expect("a valid replay");
+    assert_eq!(
+        quiet.ended,
+        ended(Reason::Price, PositionAtEnd::Closed, T0 + BAR_MS)
+    );
 }
 
 #[test]
@@ -390,7 +465,7 @@ fn an_exit_at_a_fill_carries_the_time_of_the_fill_and_keeps_that_fill() {
 }
 
 #[test]
-fn an_exit_at_the_close_of_a_bar_carries_the_end_of_the_bar() {
+fn an_exit_at_an_extreme_after_the_last_fill_carries_the_end_of_the_bar() {
     let theta = Theta {
         stop_bottom: Some(dec!(69.00)),
         ..plain()
@@ -407,6 +482,104 @@ fn an_exit_at_the_close_of_a_bar_carries_the_end_of_the_bar() {
     );
     assert_eq!(outcome.fills_applied, 1);
     assert_eq!(outcome.fills_discarded, 1);
+    assert_eq!(outcome.run.prices().last, dec!(68.90));
+}
+
+#[test]
+fn an_exit_at_the_close_of_a_bar_carries_the_end_of_the_bar() {
+    let theta = Theta {
+        take_profit: Some(Target::Amount(dec!(0.03))),
+        ..plain()
+    };
+    let fills = [fill(30_000, 19, Side::Buy), fill(90_000, 20, Side::Sell)];
+    let bars = [
+        bar(0, dec!(70.21), dec!(70.21), dec!(69.25), dec!(69.60)),
+        still(1, dec!(69.60)),
+    ];
+    let outcome = account(&replay(roomy(theta)), &fills, &bars).expect("a valid replay");
+    assert_eq!(
+        outcome.ended,
+        ended(Reason::TakeProfit, PositionAtEnd::Closed, T0 + BAR_MS)
+    );
+    assert_eq!(outcome.fills_applied, 1);
+    assert_eq!(outcome.fills_discarded, 1);
+    assert_eq!(outcome.run.prices().last, dec!(69.60));
+    assert_eq!(outcome.profit_last(), dec!(0.033));
+}
+
+#[test]
+fn fills_that_carry_the_time_of_the_fill_that_ended_the_run_are_kept() {
+    let theta = Theta {
+        stop_bottom: Some(dec!(69.30)),
+        ..plain()
+    };
+    let fills = [
+        fill(30_000, 19, Side::Buy),
+        fill(30_000, 18, Side::Buy),
+        fill(30_001, 17, Side::Buy),
+    ];
+    let bars = [bar(0, dec!(70.21), dec!(70.21), dec!(67.80), dec!(67.85))];
+    let outcome = account(&replay(roomy(theta)), &fills, &bars).expect("a valid replay");
+    assert_eq!(
+        outcome.ended,
+        ended(Reason::Price, PositionAtEnd::Closed, T0 + 30_000)
+    );
+    assert_eq!(outcome.fills_applied, 2);
+    assert_eq!(outcome.fills_discarded, 1);
+    assert_eq!(outcome.run.position(), dec!(0.22));
+    assert_eq!(outcome.ledger().trades().count(), 2);
+}
+
+#[test]
+fn a_fill_two_levels_from_the_empty_level_stops_the_replay() {
+    let fills = [
+        fill(10_000, 21, Side::Sell),
+        fill(10_400, 19, Side::Buy),
+        Fill {
+            maker: false,
+            ..fill(11_000, 20, Side::Buy)
+        },
+    ];
+    let bars = [bar(0, dec!(70.21), dec!(70.75), dec!(69.20), dec!(69.25))];
+    assert_eq!(
+        account(&replay(tight(plain())), &fills, &bars),
+        Err(ReplayError::Step {
+            fill: 1,
+            error: StepError::FillNotAdjacent,
+        })
+    );
+}
+
+#[test]
+fn fills_of_one_time_must_come_nearest_level_first() {
+    let bars = [bar(0, dec!(70.21), dec!(70.21), dec!(68.50), dec!(68.55))];
+    let nearest_first = [fill(30_000, 19, Side::Buy), fill(30_000, 18, Side::Buy)];
+    let farthest_first = [fill(30_000, 18, Side::Buy), fill(30_000, 19, Side::Buy)];
+    let taken = account(&replay(tight(plain())), &nearest_first, &bars).expect("a valid replay");
+    assert_eq!(taken.fills_applied, 2);
+    assert_eq!(
+        account(&replay(tight(plain())), &farthest_first, &bars),
+        Err(ReplayError::Step {
+            fill: 0,
+            error: StepError::FillNotAdjacent,
+        })
+    );
+}
+
+#[test]
+fn a_fill_at_a_price_worse_than_its_level_is_refused() {
+    let bars = [still(0, dec!(70.21))];
+    let fills = [Fill {
+        price: dec!(75.00),
+        ..fill(1_000, 19, Side::Buy)
+    }];
+    assert_eq!(
+        account(&replay(tight(plain())), &fills, &bars),
+        Err(ReplayError::Step {
+            fill: 0,
+            error: StepError::PriceWorseThanLevel,
+        })
+    );
 }
 
 #[test]

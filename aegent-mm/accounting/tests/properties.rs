@@ -50,6 +50,7 @@ fn tape_from(moves: &[(u8, u32)], drift: u8, wiggles: &[(u8, u8)], quiet_bars: u
         level = next;
     }
     let bar_count = (time_ms - T0) / BAR_MS + 1 + quiet_bars;
+    let outside = Decimal::from(8);
     let mut bars = Vec::new();
     let mut cursor = 0;
     let mut last = dec!(70.21);
@@ -59,30 +60,31 @@ fn tape_from(moves: &[(u8, u32)], drift: u8, wiggles: &[(u8, u8)], quiet_bars: u
         let open = last;
         let mut high = open;
         let mut low = open;
-        let mut traded = false;
+        let mut top = empty;
+        let mut bottom = empty;
         while cursor < prints.len() && prints[cursor].0 < start_ms + BAR_MS {
             let (_, print, after) = prints[cursor];
             high = high.max(print);
             low = low.min(print);
             last = print;
             empty = after;
-            traded = true;
+            top = top.max(after);
+            bottom = bottom.min(after);
             cursor += 1;
         }
-        if !traded {
-            let (rise, fall) = wiggles[index as usize % wiggles.len()];
-            let outside = Decimal::from(8);
-            high = if empty < GRIDS {
-                (open + tick * Decimal::from(rise)).min(level_price(empty + 1))
-            } else {
-                open + tick * Decimal::from(rise) * outside
-            };
-            low = if empty > 0 {
-                (open - tick * Decimal::from(fall)).max(level_price(empty - 1))
-            } else {
-                open - tick * Decimal::from(fall) * outside
-            };
-        }
+        let (rise, fall) = wiggles[index as usize % wiggles.len()];
+        let risen = high + tick * Decimal::from(rise);
+        let fallen = low - tick * Decimal::from(fall);
+        high = if top < GRIDS {
+            high.max(risen.min(level_price(top + 1)))
+        } else {
+            high + tick * Decimal::from(rise) * outside
+        };
+        low = if bottom > 0 {
+            low.min(fallen.max(level_price(bottom - 1)))
+        } else {
+            low - tick * Decimal::from(fall) * outside
+        };
         bars.push(Bar {
             time_ms: start_ms,
             open,
@@ -212,13 +214,21 @@ proptest! {
                 prop_assert!(cut.iter().all(|fill| fill.time_ms >= ended.time_ms));
             }
         }
-        let shortened = account(&replay, &tape.fills[..outcome.fills_applied], &tape.bars);
-        prop_assert!(shortened.is_ok());
-        let shortened = shortened.expect("checked above");
-        prop_assert_eq!(&shortened.run, &outcome.run);
-        prop_assert_eq!(shortened.ended, outcome.ended);
-        prop_assert_eq!(shortened.fills_applied, outcome.fills_applied);
-        prop_assert_eq!(shortened.fills_discarded, 0);
+        let bar_end = outcome
+            .exit_ms()
+            .map(|time_ms| T0 + (time_ms - T0).div_ceil(BAR_MS) * BAR_MS);
+        let cut_in_later_bars = tape.fills[outcome.fills_applied..]
+            .iter()
+            .all(|fill| bar_end.is_some_and(|end_ms| fill.time_ms >= end_ms));
+        if cut_in_later_bars {
+            let shortened = account(&replay, &tape.fills[..outcome.fills_applied], &tape.bars);
+            prop_assert!(shortened.is_ok());
+            let shortened = shortened.expect("checked above");
+            prop_assert_eq!(&shortened.run, &outcome.run);
+            prop_assert_eq!(shortened.ended, outcome.ended);
+            prop_assert_eq!(shortened.fills_applied, outcome.fills_applied);
+            prop_assert_eq!(shortened.fills_discarded, 0);
+        }
     }
 
     #[test]
@@ -253,7 +263,10 @@ proptest! {
                 Reason::Guard => {
                     prop_assert!(outcome.wallet_value() < replay.program.floor());
                 }
-                Reason::Risk => {}
+                Reason::Risk => {
+                    prop_assert!(!roomy);
+                    prop_assert!(outcome.run.position().abs() >= dec!(0.11) * dec!(17));
+                }
                 Reason::Backstop | Reason::Failure | Reason::Command => {
                     prop_assert!(false, "no such exit arises in replay");
                 }

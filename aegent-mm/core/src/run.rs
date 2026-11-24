@@ -16,6 +16,7 @@ pub enum Wallet {
     Reported {
         balance: Decimal,
         entry_price: Decimal,
+        position: Decimal,
     },
     RunOnly {
         balance_at_start: Decimal,
@@ -107,10 +108,11 @@ impl Run {
             Wallet::Reported {
                 balance,
                 entry_price,
+                position,
             } => wallet_value(
                 *balance,
                 *entry_price,
-                self.position(),
+                *position,
                 &self.prices,
                 self.instance.binding().taker_fee,
             ),

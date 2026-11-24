@@ -254,6 +254,14 @@ fn inadmissible_trades_are_refused_and_change_nothing() {
             trade(2, 21, dec!(0.11), dec!(0)),
             StepError::PriceNotPositive,
         ),
+        (
+            trade(2, 19, dec!(0.07), dec!(69.31)),
+            StepError::PriceWorseThanLevel,
+        ),
+        (
+            trade(2, 21, dec!(0.11), dec!(70.69)),
+            StepError::PriceWorseThanLevel,
+        ),
         (trade(2, 21, dec!(0.12), dec!(70.70)), StepError::Overfill),
         (trade(2, 19, dec!(0.08), dec!(69.30)), StepError::Overfill),
         (
@@ -589,4 +597,112 @@ fn quote_still_lists_orders_in_closing_although_closing_cancels_every_resting_or
     let state = closing(&instance, EventKind::Command { keep: false });
     assert!(matches!(state.phase(), Phase::Closing(_)));
     assert_eq!(quote(&instance, &state).len(), 40);
+}
+
+#[test]
+fn a_fill_price_may_be_better_than_the_level_price_but_not_worse() {
+    let instance = app_instance();
+    let mut state = running(&instance, START_LEVEL);
+    assert!(
+        step(
+            &instance,
+            &mut state,
+            &trade(1, 19, dec!(0.05), dec!(69.30))
+        )
+        .is_ok()
+    );
+    assert!(
+        step(
+            &instance,
+            &mut state,
+            &trade(2, 19, dec!(0.02), dec!(60.00))
+        )
+        .is_ok()
+    );
+    assert!(
+        step(
+            &instance,
+            &mut state,
+            &trade(3, 21, dec!(0.05), dec!(70.70))
+        )
+        .is_ok()
+    );
+    assert!(
+        step(
+            &instance,
+            &mut state,
+            &trade(4, 21, dec!(0.02), dec!(75.00))
+        )
+        .is_ok()
+    );
+    let before = state.clone();
+    assert_eq!(
+        step(
+            &instance,
+            &mut state,
+            &trade(5, 19, dec!(0.01), dec!(69.31))
+        ),
+        Err(StepError::PriceWorseThanLevel)
+    );
+    assert_eq!(
+        step(
+            &instance,
+            &mut state,
+            &trade(5, 21, dec!(0.01), dec!(70.69))
+        ),
+        Err(StepError::PriceWorseThanLevel)
+    );
+    assert_eq!(state, before);
+}
+
+#[test]
+fn a_fill_two_levels_from_the_empty_level_is_refused_although_order_latency_can_produce_it() {
+    let instance = app_instance();
+    let mut state = running(&instance, START_LEVEL);
+    let rearmed = fill(&instance, &mut state, 1, 21).send;
+    assert_eq!(
+        rearmed.map(|order| (order.level, order.side)),
+        Some((20, Side::Buy))
+    );
+    assert_eq!(state.empty_level(), 21);
+    let before = state.clone();
+    let lower_buy_first = trade(2, 19, dec!(0.11), dec!(69.30));
+    assert_eq!(
+        step(&instance, &mut state, &lower_buy_first),
+        Err(StepError::FillNotAdjacent)
+    );
+    assert_eq!(state, before);
+    assert_eq!(state.ledger().trades().count(), 1);
+    fill(&instance, &mut state, 3, 20);
+    assert_eq!(state.empty_level(), 20);
+    assert_eq!(state.position(instance.quantity()), Decimal::ZERO);
+    assert_eq!(state.ledger().trades().count(), 2);
+}
+
+#[test]
+fn a_part_filled_order_away_from_the_empty_level_cannot_be_completed_there() {
+    let instance = app_instance();
+    let mut state = running(&instance, START_LEVEL);
+    step(
+        &instance,
+        &mut state,
+        &trade(1, 18, dec!(0.05), dec!(68.60)),
+    )
+    .expect("recorded");
+    assert_eq!(
+        step(
+            &instance,
+            &mut state,
+            &trade(2, 18, dec!(0.06), dec!(68.60))
+        ),
+        Err(StepError::FillNotAdjacent)
+    );
+    fill(&instance, &mut state, 3, 19);
+    let completed = step(
+        &instance,
+        &mut state,
+        &trade(4, 18, dec!(0.06), dec!(68.60)),
+    )
+    .expect("the order is adjacent now");
+    assert_eq!(completed.fill.map(|fill| fill.level), Some(18));
 }

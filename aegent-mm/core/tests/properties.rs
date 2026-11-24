@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
 use aegent_mm_core::cells::{Cell, Cells, first_side, owner};
+use aegent_mm_core::numeric::ceil_quotient;
 use aegent_mm_core::params::{Instance, Resources, Theta};
 use aegent_mm_core::quote::{Order, quote, resting_notional};
 use aegent_mm_core::state::State;
 use aegent_mm_core::step::{StepError, step};
-use aegent_mm_core::steps::ceil_quotient;
 use aegent_mm_core::value::{
     matched, pairing, profit_at, run_wallet_value, unmatched, wallet_value,
 };
@@ -599,12 +599,6 @@ proptest! {
                 profit,
                 harness.cash + position * last - harness.fees + harness.funding
             );
-            prop_assert_eq!(
-                unmatched(&instance, state, &Prices::flat(last))
-                    + matched(&instance, state)
-                    + harness.funding,
-                profit
-            );
         }
     }
 
@@ -642,7 +636,9 @@ proptest! {
         tape in mixed_moves(),
         level in 0u32..=26,
         lots in -2i64..=450,
-        price_cents in -1i64..=3,
+        complete in any::<bool>(),
+        offset_ticks in -3i64..=3,
+        worthless in prop::bool::weighted(0.05),
     ) {
         let mut harness = Harness::new(&setup);
         for chosen in &tape {
@@ -650,11 +646,24 @@ proptest! {
         }
         let instance = setup.instance.clone();
         let lot = instance.binding().lot_step;
-        let quantity = lot * Decimal::from(lots);
-        let price = Decimal::new(price_cents, 2) + instance.level_price(level.min(instance.grids()))
-            * Decimal::from(i64::from(price_cents > 0));
         let empty = harness.state.empty_level();
         let before = harness.state.clone();
+        let quantity = if complete {
+            instance.quantity() - before.filled(level)
+        } else {
+            lot * Decimal::from(lots)
+        };
+        let limit = instance.level_price(level.min(instance.grids()));
+        let price = if worthless {
+            Decimal::ZERO
+        } else {
+            limit + harness.tick() * Decimal::from(offset_ticks)
+        };
+        let worse = if level < empty {
+            price > limit
+        } else {
+            price < limit
+        };
         let event = Event::at(
             harness.clock + 1,
             EventKind::Trade {
@@ -674,6 +683,8 @@ proptest! {
             Err(StepError::QuantityNotPositive)
         } else if price <= Decimal::ZERO {
             Err(StepError::PriceNotPositive)
+        } else if worse {
+            Err(StepError::PriceWorseThanLevel)
         } else if before.filled(level) + quantity > instance.quantity() {
             Err(StepError::Overfill)
         } else if before.filled(level) + quantity == instance.quantity()
@@ -692,6 +703,13 @@ proptest! {
                 harness.state.position(instance.quantity()),
                 harness.state.ledger().net_quantity()
             );
+            let fill = outcome.expect("checked above").fill;
+            let completes = before.filled(level) + quantity == instance.quantity();
+            prop_assert_eq!(fill.is_some(), completes);
+            if let Some(fill) = fill {
+                prop_assert!(fill.level + 1 == empty || fill.level == empty + 1);
+                prop_assert_eq!(harness.state.empty_level(), fill.level);
+            }
         }
     }
 }

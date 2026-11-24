@@ -168,6 +168,17 @@ impl Session {
         self.note(applied.exit, fill.time_ms);
         Ok(())
     }
+
+    fn fills_of_the_same_time(&mut self, index: usize, fills: &[Fill]) -> Result<(), ReplayError> {
+        let time_ms = fills[index].time_ms;
+        for (later, fill) in fills.iter().enumerate().skip(index + 1) {
+            if fill.time_ms != time_ms {
+                break;
+            }
+            self.fill(later, fill)?;
+        }
+        Ok(())
+    }
 }
 
 pub fn account(replay: &Replay, fills: &[Fill], bars: &[Bar]) -> Result<Outcome, ReplayError> {
@@ -201,10 +212,16 @@ pub fn account(replay: &Replay, fills: &[Fill], bars: &[Bar]) -> Result<Outcome,
         ended: None,
         applied: 0,
     };
-    for anchor in Timeline::new(fills, &bars[first..], replay.bar_ms) {
+    let start_level = session.run.state().start_level();
+    for anchor in Timeline::new(fills, &bars[first..], replay.bar_ms, start_level) {
         match anchor {
             Anchor::Price { time_ms, price } => session.price(time_ms, price)?,
-            Anchor::Fill { index } => session.fill(index, &fills[index])?,
+            Anchor::Fill { index } => {
+                session.fill(index, &fills[index])?;
+                if session.ended.is_some() {
+                    session.fills_of_the_same_time(index, fills)?;
+                }
+            }
         }
         if session.ended.is_some() {
             break;

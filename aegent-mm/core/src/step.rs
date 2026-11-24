@@ -26,6 +26,7 @@ pub enum StepError {
     NoOrderAtLevel,
     QuantityNotPositive,
     PriceNotPositive,
+    PriceWorseThanLevel,
     Overfill,
     FillNotAdjacent,
 }
@@ -111,6 +112,19 @@ fn trade(instance: &Instance, state: &mut State, input: TradeInput) -> Result<St
     if input.price <= Decimal::ZERO {
         return Err(StepError::PriceNotPositive);
     }
+    let side = if input.level < empty {
+        Side::Buy
+    } else {
+        Side::Sell
+    };
+    let limit = instance.level_price(input.level);
+    let worse = match side {
+        Side::Buy => input.price > limit,
+        Side::Sell => input.price < limit,
+    };
+    if worse {
+        return Err(StepError::PriceWorseThanLevel);
+    }
     let filled = state.filled(input.level) + input.quantity;
     if filled > instance.quantity() {
         return Err(StepError::Overfill);
@@ -120,11 +134,6 @@ fn trade(instance: &Instance, state: &mut State, input: TradeInput) -> Result<St
     if complete && !adjacent {
         return Err(StepError::FillNotAdjacent);
     }
-    let side = if input.level < empty {
-        Side::Buy
-    } else {
-        Side::Sell
-    };
     state.ledger_mut().record_trade(TradeRecord {
         time_ms: input.time_ms,
         level: input.level,

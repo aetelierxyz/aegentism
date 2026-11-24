@@ -85,7 +85,7 @@ pub fn risk_ratio(instance: &Instance, state: &State, mark: Decimal) -> Option<D
     Some(margin_balance(instance, state, mark) * instance.leverage() / exposure)
 }
 
-pub fn risk_holds(instance: &Instance, state: &State, mark: Decimal) -> bool {
+pub fn risk_ratio_below_one(instance: &Instance, state: &State, mark: Decimal) -> bool {
     margin_balance(instance, state, mark) * instance.leverage() < exposure(instance, state, mark)
 }
 
@@ -109,7 +109,7 @@ pub fn holds(input: &StopInput, reason: Reason) -> bool {
                 || data_silent(input.program, &input.liveness)
                 || stream_lost(input.program, &input.liveness)
         }
-        Reason::Risk => risk_holds(input.instance, input.state, input.prices.mark),
+        Reason::Risk => risk_ratio_below_one(input.instance, input.state, input.prices.mark),
         Reason::StopLoss => input.instance.stop_loss().is_some_and(|stop_loss| {
             profit_trigger(input.instance, input.state, input.prices) <= stop_loss
         }),
@@ -134,10 +134,15 @@ pub fn conditions(input: &StopInput) -> Vec<Reason> {
 
 pub fn evaluate(input: &StopInput) -> Option<Exit> {
     let keep = matches!(input.signal, Some(Signal::Command { keep: true }));
-    TABLE
-        .into_iter()
-        .find(|reason| holds(input, *reason))
-        .map(|reason| exit_for(reason, input.instance.theta(), keep))
+    let reason = TABLE.into_iter().find(|reason| holds(input, *reason))?;
+    let exit = exit_for(reason, input.instance.theta(), keep);
+    if input.signal == Some(Signal::Backstop) {
+        return Some(Exit {
+            reason: exit.reason,
+            position: PositionAtEnd::ClosedByExchange,
+        });
+    }
+    Some(exit)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

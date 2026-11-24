@@ -487,3 +487,47 @@ fn the_loss_cap_lies_strictly_between_zero_and_one() {
     assert_eq!(program.data_silence_ms(), 5_000);
     assert_eq!(program.stream_loss_ms(), 10_000);
 }
+
+#[test]
+fn a_lowest_order_exactly_at_the_minimum_notional_is_admissible() {
+    let at_minimum = Theta::new(dec!(50), dec!(78), 40, dec!(0.10));
+    let below = Theta::new(dec!(50), dec!(78), 40, dec!(0.09));
+    assert_eq!(dec!(0.10) * dec!(50), reference::binding().min_notional);
+    assert!(
+        Instance::admit(
+            reference::app_binding(),
+            at_minimum,
+            reference::resources(),
+            wallet_balance()
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        refusal_of_theta(below),
+        vec![Inadmissible::BelowMinNotional]
+    );
+}
+
+#[test]
+fn the_reference_parameters_leave_the_stop_loss_and_the_price_stops_unset() {
+    let theta = reference::theta();
+    assert_eq!(theta.lower, dec!(56));
+    assert_eq!(theta.upper, dec!(84));
+    assert_eq!(theta.grids, 40);
+    assert_eq!(theta.quantity, dec!(0.11));
+    assert_eq!(theta.take_profit, Some(Target::Roi(dec!(0.01))));
+    assert_eq!(theta.stop_loss, None);
+    assert_eq!(theta.stop_top, None);
+    assert_eq!(theta.stop_bottom, None);
+    assert_eq!(theta.trigger, Trigger::Last);
+    assert!(theta.close_tp_sl);
+    assert!(theta.close_risk);
+    assert_eq!(
+        reference::resources(),
+        Resources {
+            margin: dec!(20),
+            leverage: 20,
+        }
+    );
+    assert_eq!(reference::start_price(), dec!(70.21));
+}
