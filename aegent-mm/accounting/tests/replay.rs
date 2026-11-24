@@ -460,8 +460,8 @@ fn a_fill_the_machine_cannot_take_is_refused_with_its_index() {
     let bars = [still(0, dec!(70.21))];
     let skipping = [fill(1_000, 19, Side::Buy), fill(2_000, 17, Side::Buy)];
     let unknown = [fill(1_000, 41, Side::Sell)];
-    let oversized = [Fill {
-        quantity: dec!(0.12),
+    let worthless = [Fill {
+        price: dec!(-69.30),
         ..fill(1_000, 19, Side::Buy)
     }];
     assert_eq!(
@@ -479,12 +479,30 @@ fn a_fill_the_machine_cannot_take_is_refused_with_its_index() {
         })
     );
     assert_eq!(
-        account(&replay(tight(plain())), &oversized, &bars),
+        account(&replay(tight(plain())), &worthless, &bars),
         Err(ReplayError::Step {
             fill: 0,
-            error: StepError::Overfill,
+            error: StepError::PriceNotPositive,
         })
     );
+}
+
+#[test]
+fn a_fill_of_less_or_more_than_the_order_quantity_is_refused() {
+    let bars = [still(0, dec!(70.21))];
+    for quantity in [dec!(0.05), dec!(0.12)] {
+        let fills = [
+            fill(1_000, 19, Side::Buy),
+            Fill {
+                quantity,
+                ..fill(2_000, 18, Side::Buy)
+            },
+        ];
+        assert_eq!(
+            account(&replay(tight(plain())), &fills, &bars),
+            Err(ReplayError::FillNotComplete { fill: 1 })
+        );
+    }
 }
 
 #[test]

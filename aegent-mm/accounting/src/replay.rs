@@ -72,6 +72,7 @@ pub enum ReplayError {
     NoBarAtStart,
     Refused(Vec<Precondition>),
     FillSideMismatch { fill: usize },
+    FillNotComplete { fill: usize },
     Step { fill: usize, error: StepError },
     Engine(StepError),
     Phase(PhaseError),
@@ -138,6 +139,9 @@ impl Session {
         };
         if fill.level != empty && fill.side != resting {
             return Err(ReplayError::FillSideMismatch { fill: index });
+        }
+        if fill.quantity != self.run.instance().quantity() {
+            return Err(ReplayError::FillNotComplete { fill: index });
         }
         let binding = self.run.instance().binding();
         let rate = if fill.maker {

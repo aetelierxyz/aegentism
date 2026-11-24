@@ -91,13 +91,13 @@ fn the_guard_ends_the_run_when_the_wallet_value_falls_below_the_floor() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
-            ClosingAction::ReducePosition {
+            ClosingAction::CancelEveryRestingOrder,
+            ClosingAction::ReduceOnlyMarketOrder {
                 side: Side::Sell,
                 quantity: dec!(2.2),
             },
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
 }
@@ -116,7 +116,7 @@ fn the_guard_closes_the_position_whatever_the_toggles_say() {
     assert_eq!(applied.exit, exit(Reason::Guard, PositionAtEnd::Closed));
     assert_eq!(
         run.closing_actions()[1],
-        ClosingAction::ReducePosition {
+        ClosingAction::ReduceOnlyMarketOrder {
             side: Side::Buy,
             quantity: dec!(2.2),
         }
@@ -145,9 +145,9 @@ fn a_wallet_value_equal_to_the_floor_does_not_trip_the_guard() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
+            ClosingAction::CancelEveryRestingOrder,
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
 }
@@ -164,9 +164,9 @@ fn a_backstop_trade_ends_the_run_with_the_position_closed_by_the_exchange() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
+            ClosingAction::CancelEveryRestingOrder,
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
 }
@@ -180,13 +180,13 @@ fn a_reject_ends_the_run_by_failure() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
-            ClosingAction::ReducePosition {
+            ClosingAction::CancelEveryRestingOrder,
+            ClosingAction::ReduceOnlyMarketOrder {
                 side: Side::Buy,
                 quantity: dec!(0.22),
             },
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
 }
@@ -220,7 +220,7 @@ fn a_failure_keeps_the_position_when_close_risk_is_off() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
+            ClosingAction::CancelEveryRestingOrder,
             ClosingAction::VerifyNoRestingOrders,
         ]
     );
@@ -279,13 +279,13 @@ fn a_risk_ratio_below_one_ends_the_run_after_eighteen_levels_down() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
-            ClosingAction::ReducePosition {
+            ClosingAction::CancelEveryRestingOrder,
+            ClosingAction::ReduceOnlyMarketOrder {
                 side: Side::Sell,
                 quantity: dec!(1.87),
             },
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
 }
@@ -298,7 +298,7 @@ fn a_risk_ratio_below_one_ends_the_run_after_eighteen_levels_up() {
     assert_eq!(applied.exit, exit(Reason::Risk, PositionAtEnd::Closed));
     assert_eq!(
         run.closing_actions()[1],
-        ClosingAction::ReducePosition {
+        ClosingAction::ReduceOnlyMarketOrder {
             side: Side::Buy,
             quantity: dec!(1.87),
         }
@@ -318,7 +318,7 @@ fn a_risk_exit_keeps_the_position_when_close_risk_is_off() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
+            ClosingAction::CancelEveryRestingOrder,
             ClosingAction::VerifyNoRestingOrders,
         ]
     );
@@ -362,7 +362,7 @@ fn the_stop_loss_closes_the_position_only_when_close_tp_sl_is_on() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
+            ClosingAction::CancelEveryRestingOrder,
             ClosingAction::VerifyNoRestingOrders,
         ]
     );
@@ -374,7 +374,7 @@ fn the_stop_loss_closes_the_position_only_when_close_tp_sl_is_on() {
     at_price(&mut closing, 1_000, dec!(61.60));
     assert_eq!(
         closing.closing_actions()[1],
-        ClosingAction::ReducePosition {
+        ClosingAction::ReduceOnlyMarketOrder {
             side: Side::Sell,
             quantity: dec!(1.21),
         }
@@ -471,7 +471,7 @@ fn a_price_stop_follows_the_configured_trigger_price_and_the_tp_sl_toggle() {
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
+            ClosingAction::CancelEveryRestingOrder,
             ClosingAction::VerifyNoRestingOrders,
         ]
     );
@@ -497,13 +497,13 @@ fn the_take_profit_of_the_reference_instance_is_reached_within_three_round_trips
     assert_eq!(
         run.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
-            ClosingAction::ReducePosition {
+            ClosingAction::CancelEveryRestingOrder,
+            ClosingAction::ReduceOnlyMarketOrder {
                 side: Side::Buy,
                 quantity: dec!(0.11),
             },
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
 }
@@ -532,13 +532,13 @@ fn a_stop_command_ends_the_run_and_closes_the_position_unless_told_to_keep_it() 
     assert_eq!(
         closed.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
-            ClosingAction::ReducePosition {
+            ClosingAction::CancelEveryRestingOrder,
+            ClosingAction::ReduceOnlyMarketOrder {
                 side: Side::Sell,
                 quantity: dec!(0.11),
             },
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
     let mut kept = begin(roomy(plain_theta()));
@@ -548,7 +548,7 @@ fn a_stop_command_ends_the_run_and_closes_the_position_unless_told_to_keep_it() 
     assert_eq!(
         kept.closing_actions(),
         vec![
-            ClosingAction::CancelAllOrders,
+            ClosingAction::CancelEveryRestingOrder,
             ClosingAction::VerifyNoRestingOrders,
         ]
     );
@@ -789,7 +789,7 @@ fn closing_records_late_trades_and_ends_once_confirmed() {
     assert_eq!(run.prices().last, dec!(10.00));
     assert_eq!(
         run.closing_actions()[1],
-        ClosingAction::ReducePosition {
+        ClosingAction::ReduceOnlyMarketOrder {
             side: Side::Sell,
             quantity: dec!(0.22),
         }

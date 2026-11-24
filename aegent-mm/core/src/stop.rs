@@ -142,28 +142,28 @@ pub fn evaluate(input: &StopInput) -> Option<Exit> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClosingAction {
-    CancelAllOrders,
-    ReducePosition { side: Side, quantity: Decimal },
+    CancelEveryRestingOrder,
+    ReduceOnlyMarketOrder { side: Side, quantity: Decimal },
     VerifyNoRestingOrders,
-    VerifyFlat,
+    VerifyNoPosition,
 }
 
 pub fn closing_plan(position: Decimal, at_end: PositionAtEnd) -> Vec<ClosingAction> {
-    let mut actions = vec![ClosingAction::CancelAllOrders];
+    let mut actions = vec![ClosingAction::CancelEveryRestingOrder];
     if at_end == PositionAtEnd::Closed && !position.is_zero() {
         let side = if position > Decimal::ZERO {
             Side::Sell
         } else {
             Side::Buy
         };
-        actions.push(ClosingAction::ReducePosition {
+        actions.push(ClosingAction::ReduceOnlyMarketOrder {
             side,
             quantity: position.abs(),
         });
     }
     actions.push(ClosingAction::VerifyNoRestingOrders);
     if at_end != PositionAtEnd::Kept {
-        actions.push(ClosingAction::VerifyFlat);
+        actions.push(ClosingAction::VerifyNoPosition);
     }
     actions
 }

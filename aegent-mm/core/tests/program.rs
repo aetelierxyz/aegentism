@@ -61,33 +61,33 @@ fn the_guard_cancels_every_order_and_closes_the_position_with_or_without_a_run()
     assert_eq!(
         guard_actions(dec!(0.33)),
         vec![
-            ClosingAction::CancelAllOrders,
-            ClosingAction::ReducePosition {
+            ClosingAction::CancelEveryRestingOrder,
+            ClosingAction::ReduceOnlyMarketOrder {
                 side: Side::Sell,
                 quantity: dec!(0.33),
             },
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
     assert_eq!(
         guard_actions(dec!(-1.1)),
         vec![
-            ClosingAction::CancelAllOrders,
-            ClosingAction::ReducePosition {
+            ClosingAction::CancelEveryRestingOrder,
+            ClosingAction::ReduceOnlyMarketOrder {
                 side: Side::Buy,
                 quantity: dec!(1.1),
             },
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
     assert_eq!(
         guard_actions(Decimal::ZERO),
         vec![
-            ClosingAction::CancelAllOrders,
+            ClosingAction::CancelEveryRestingOrder,
             ClosingAction::VerifyNoRestingOrders,
-            ClosingAction::VerifyFlat,
+            ClosingAction::VerifyNoPosition,
         ]
     );
 }

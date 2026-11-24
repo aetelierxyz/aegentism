@@ -32,12 +32,20 @@ pub fn quote(instance: &Instance, state: &State) -> Vec<Order> {
 }
 
 pub fn resting_notional(instance: &Instance, state: &State) -> (Decimal, Decimal) {
-    let mut bids = Decimal::ZERO;
-    let mut asks = Decimal::ZERO;
-    for order in quote(instance, state) {
-        match order.side {
-            Side::Buy => bids += order.notional(),
-            Side::Sell => asks += order.notional(),
+    let empty = state.empty_level();
+    let quantity = instance.quantity();
+    let mut bids = quantity * instance.sum_of_prices_below(empty);
+    let mut asks = quantity * instance.sum_of_prices_above(empty);
+    for level in 0..=instance.grids() {
+        let filled = state.filled(level);
+        if filled.is_zero() {
+            continue;
+        }
+        let taken = filled * instance.level_price(level);
+        if level < empty {
+            bids -= taken;
+        } else {
+            asks -= taken;
         }
     }
     (bids, asks)

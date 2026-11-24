@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use aegent_mm_core::cells::{Cell, Cells, first_side, owner};
 use aegent_mm_core::params::{Instance, Resources, Theta};
-use aegent_mm_core::quote::{Order, quote};
+use aegent_mm_core::quote::{Order, quote, resting_notional};
 use aegent_mm_core::state::State;
 use aegent_mm_core::step::{StepError, step};
 use aegent_mm_core::steps::ceil_quotient;
@@ -382,6 +382,17 @@ impl Harness {
         prop_assert_eq!(position, self.held);
         prop_assert!(position <= quantity * Decimal::from(start));
         prop_assert!(position >= -quantity * Decimal::from(grids - start));
+        let bids: Decimal = quoted
+            .iter()
+            .filter(|order| order.side == Side::Buy)
+            .map(Order::notional)
+            .sum();
+        let asks: Decimal = quoted
+            .iter()
+            .filter(|order| order.side == Side::Sell)
+            .map(Order::notional)
+            .sum();
+        prop_assert_eq!(resting_notional(&self.instance, &self.state), (bids, asks));
         prop_assert_eq!(&self.cells.resting(&self.instance), &quoted);
         prop_assert_eq!(self.cells.buying(), empty);
         for index in 0..grids {
