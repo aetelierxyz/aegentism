@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = ["aegent-mm/core", "aegent-mm/cells", "aegent-mm/accounting"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+aegent-mm-core = { path = "aegent-mm/core" }
+aegent-mm-cells = { path = "aegent-mm/cells" }
+proptest = "1.12"
+rust_decimal = { version = "1.43", default-features = false, features = ["std"] }
+rust_decimal_macros = "1.40"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
