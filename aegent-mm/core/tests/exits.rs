@@ -861,3 +861,32 @@ fn the_risk_ratio_follows_the_mark_price() {
         .expect("accepted");
     assert_eq!(applied.exit, exit(Reason::Risk, PositionAtEnd::Closed));
 }
+
+#[test]
+fn a_condition_met_during_closing_does_not_change_the_exit() {
+    let theta = Theta {
+        stop_bottom: Some(dec!(65.00)),
+        ..plain_theta()
+    };
+    let mut run = begin(roomy(theta));
+    walk(&mut run, &down(1));
+    let applied = signalled(&mut run, EventKind::Command { keep: true });
+    assert_eq!(applied.exit, exit(Reason::Command, PositionAtEnd::Kept));
+    let later = at_price(&mut run, 500, dec!(60.00));
+    assert_eq!(later.exit, None);
+    let below_floor = Observation {
+        wallet: Wallet::Reported {
+            balance: dec!(10),
+            entry_price: dec!(69.30),
+        },
+        stream_lost_since_ms: Some(0),
+    };
+    let tick = run
+        .apply(&Event::at(900_000, EventKind::Tick), &below_floor)
+        .expect("accepted");
+    assert_eq!(tick.exit, None);
+    assert_eq!(
+        run.state().exit(),
+        exit(Reason::Command, PositionAtEnd::Kept)
+    );
+}
