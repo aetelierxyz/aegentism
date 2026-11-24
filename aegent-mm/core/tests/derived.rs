@@ -188,8 +188,10 @@ proptest! {
         prop_assert!((stops.buy_stop + tick - instance.upper()) * short > high_slack);
         prop_assert_eq!(stops.low_distance > Decimal::ZERO, low_slack > Decimal::ZERO);
         prop_assert_eq!(stops.high_distance > Decimal::ZERO, high_slack > Decimal::ZERO);
-        prop_assert_eq!(stops.low_distance > Decimal::ZERO, stops.sell_stop < instance.lower());
-        prop_assert_eq!(stops.high_distance > Decimal::ZERO, stops.buy_stop > instance.upper());
+        prop_assert_eq!(low_slack >= tick * long, stops.sell_stop < instance.lower());
+        prop_assert_eq!(high_slack >= tick * short, stops.buy_stop > instance.upper());
+        prop_assert_eq!(low_slack >= Decimal::ZERO, stops.sell_stop <= instance.lower());
+        prop_assert_eq!(high_slack >= Decimal::ZERO, stops.buy_stop >= instance.upper());
     }
 
     #[test]

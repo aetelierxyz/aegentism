@@ -224,6 +224,24 @@ fn backstop_triggers_are_rounded_to_the_tick_toward_the_range() {
 }
 
 #[test]
+fn a_distance_below_one_tick_puts_the_backstop_triggers_on_the_range_bounds() {
+    let instance = app_instance();
+    let started = start(
+        &instance,
+        &program(),
+        &Prices::flat(dec!(70.21)),
+        dec!(94.64),
+    )
+    .expect("preconditions hold");
+    let stops = started.backstops;
+    assert_eq!(stops.budget, dec!(14.64));
+    assert!(stops.low_distance > Decimal::ZERO && stops.low_distance < dec!(0.01));
+    assert!(stops.high_distance > Decimal::ZERO && stops.high_distance < dec!(0.01));
+    assert_eq!(stops.sell_stop, dec!(56.00));
+    assert_eq!(stops.buy_stop, dec!(84.00));
+}
+
+#[test]
 fn a_budget_wider_than_the_ladder_puts_the_sell_stop_below_zero() {
     let instance = admitted(
         Theta::new(dec!(56), dec!(57.4), 2, dec!(0.11)),
