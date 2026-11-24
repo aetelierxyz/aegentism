@@ -890,3 +890,49 @@ fn a_condition_met_during_closing_does_not_change_the_exit() {
         exit(Reason::Command, PositionAtEnd::Kept)
     );
 }
+
+#[test]
+fn on_a_steady_fall_the_risk_exit_comes_between_the_seventeenth_and_the_eighteenth_level() {
+    let mut run = begin(tight(plain_theta()));
+    walk(&mut run, &down(17));
+    assert_eq!(run.instance().level_price(3), dec!(58.10));
+    assert_eq!(run.instance().level_price(2), dec!(57.40));
+    assert_eq!(at_price(&mut run, 1_000, dec!(57.89)).exit, None);
+    let applied = at_price(&mut run, 1_001, dec!(57.88));
+    assert_eq!(applied.exit, exit(Reason::Risk, PositionAtEnd::Closed));
+    assert_eq!(run.position(), dec!(1.87));
+    assert_eq!(run.state().empty_level(), 3);
+}
+
+#[test]
+fn the_ledger_of_an_ended_run_holds_no_trade_of_its_closing_order() {
+    let mut run = begin(roomy(plain_theta()));
+    walk(&mut run, &down(2));
+    let applied = signalled(&mut run, EventKind::Command { keep: false });
+    assert_eq!(applied.exit, exit(Reason::Command, PositionAtEnd::Closed));
+    assert_eq!(
+        run.closing_actions()[1],
+        ClosingAction::ReduceOnlyMarketOrder {
+            side: Side::Sell,
+            quantity: dec!(0.22),
+        }
+    );
+    assert_eq!(run.confirm_closed(), Ok(()));
+    assert_eq!(run.state().ledger().trades().count(), 2);
+    assert_eq!(run.state().ledger().net_quantity(), dec!(0.22));
+    assert_eq!(run.position(), dec!(0.22));
+}
+
+#[test]
+fn a_backstop_trade_leaves_no_entry_in_the_ledger() {
+    let mut run = begin(roomy(plain_theta()));
+    walk(&mut run, &down(2));
+    let applied = signalled(&mut run, EventKind::Backstop);
+    assert_eq!(
+        applied.exit,
+        exit(Reason::Backstop, PositionAtEnd::ClosedByExchange)
+    );
+    assert_eq!(run.confirm_closed(), Ok(()));
+    assert_eq!(run.state().ledger().trades().count(), 2);
+    assert_eq!(run.position(), dec!(0.22));
+}
