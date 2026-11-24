@@ -153,6 +153,25 @@ fn a_replay_without_a_bar_at_the_start_time_is_refused() {
 }
 
 #[test]
+fn a_margin_above_the_wallet_balance_of_the_replay_is_refused() {
+    let bars = [still(0, dec!(70.21))];
+    let short_of_funds = Replay {
+        wallet_balance: dec!(19.99),
+        ..replay(tight(reference::theta()))
+    };
+    let exact = Replay {
+        wallet_balance: dec!(20),
+        program: Program::new(dec!(20), dec!(0.9), 60_000, 5_000, 10_000).expect("valid"),
+        ..replay(tight(reference::theta()))
+    };
+    assert_eq!(
+        account(&short_of_funds, &[], &bars),
+        Err(ReplayError::MarginAboveWallet)
+    );
+    assert!(account(&exact, &[], &bars).is_ok());
+}
+
+#[test]
 fn a_start_that_fails_a_precondition_is_refused() {
     let at_bound = [still(0, dec!(84.00))];
     let lopsided = [still(0, dec!(73.50))];

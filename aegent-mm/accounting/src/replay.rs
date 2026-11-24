@@ -70,6 +70,7 @@ pub enum ReplayError {
     FillsNotAscending { fill: usize },
     FillBeforeStart { fill: usize },
     NoBarAtStart,
+    MarginAboveWallet,
     Refused(Vec<Precondition>),
     FillSideMismatch { fill: usize },
     FillNotComplete { fill: usize },
@@ -172,6 +173,9 @@ impl Session {
 pub fn account(replay: &Replay, fills: &[Fill], bars: &[Bar]) -> Result<Outcome, ReplayError> {
     check_bars(bars, replay.bar_ms)?;
     check_fills(fills, replay.start_ms)?;
+    if replay.instance.margin() > replay.wallet_balance {
+        return Err(ReplayError::MarginAboveWallet);
+    }
     let first = bars
         .iter()
         .position(|bar| bar.time_ms == replay.start_ms)
