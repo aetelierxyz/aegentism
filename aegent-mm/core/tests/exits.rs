@@ -835,3 +835,29 @@ fn resources_with_leverage_five_fit_the_whole_range() {
     walk(&mut up_run, &up(20));
     assert_eq!(up_run.state().phase(), Phase::Run);
 }
+
+#[test]
+fn the_risk_ratio_follows_the_mark_price() {
+    let mut run = begin(tight(plain_theta()));
+    walk(&mut run, &down(17));
+    let last_lower = Prices {
+        last: dec!(57.40),
+        mark: dec!(58.10),
+        bid: dec!(58.10),
+        ask: dec!(58.10),
+    };
+    let mark_lower = Prices {
+        last: dec!(58.10),
+        mark: dec!(57.40),
+        bid: dec!(58.10),
+        ask: dec!(58.10),
+    };
+    let applied = run
+        .apply(&Event::at(1_000, EventKind::Price(last_lower)), &run_only())
+        .expect("accepted");
+    assert_eq!(applied.exit, None);
+    let applied = run
+        .apply(&Event::at(1_001, EventKind::Price(mark_lower)), &run_only())
+        .expect("accepted");
+    assert_eq!(applied.exit, exit(Reason::Risk, PositionAtEnd::Closed));
+}
